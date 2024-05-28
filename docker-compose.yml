@@ -1,0 +1,43 @@
+version: '3.8'
+services:
+  postgres:
+    image: 'postgres'
+    env_file: .env
+    environment:
+      POSTGRES_USER: alex
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+    ports:
+      - ${PG_PORT}:5432
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "${PG_USER}", "-d", "${PG_DBNAME}" ]
+      interval: 1s
+      timeout: 1s
+      retries: 60
+    restart: always
+    extra_hosts:
+      - "localhost:host-gateway"
+  migrator:
+    image: 'ghcr.io/amacneil/dbmate:2.12'
+    command: -u "postgres://${PG_USER}:${PG_PASSWORD}@localhost:${PG_PORT}/${PG_DBNAME}?sslmode=disable" up
+    volumes:
+      - ./migrations:/db/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    extra_hosts:
+      - "localhost:host-gateway"
+  flask:
+    build: .
+    env_file: .env
+    environment:
+      - DEBUG_MODE=false
+    ports:
+      - ${FLASK_PORT}:5000
+    stop_signal: SIGINT
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    extra_hosts:
+      - "localhost:host-gateway"
